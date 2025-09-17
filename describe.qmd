@@ -1,0 +1,16 @@
+---
+title: "Cathedral Stairmaster Exercises"
+subtitle: "Analyzing stair-climbing workouts in new mountain athletes"
+author: "Ray Pomponio"
+date: today
+format:
+  html:
+    theme: journal
+    toc: true
+    embed-resources: true
+    anchor-sections: true
+execute:
+  echo: false
+  warning: false
+abstract: "Abstract text goes here."
+---
