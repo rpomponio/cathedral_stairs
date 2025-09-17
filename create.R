@@ -76,4 +76,4 @@ setkey(long, StudentID, Week, Date, RepNum)
 
 # store as CSV file; Rdata file
 fwrite(long, file.path("Data", "MtnSchoolStairReps.csv"))
-saveRDS(long, "stair_reps.rds")
+# saveRDS(long, "stair_reps.rds")

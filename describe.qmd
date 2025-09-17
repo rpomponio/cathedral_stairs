@@ -1,5 +1,5 @@
 ---
-title: "Cathedral Stairmaster Exercises"
+title: "From the ECP Mountaineering School Archives"
 subtitle: "Analyzing stair-climbing workouts in new mountain athletes"
 author: "Ray Pomponio"
 date: today
@@ -13,4 +13,17 @@ execute:
   echo: false
   warning: false
 abstract: "Abstract text goes here."
+abstract-title: "Overview"
 ---
+
+```{r}
+library(data.table)
+reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
+```
+Convert rep times to pace in meters per hour:
+
+```{r}
+reps[, PaceMPH:=60 * 132 / TimeMins]
+hist(reps[, PaceMPH], xlab="Meters per hour", main="Histogram")
+```
+Next steps: describe variability in pace due to influence of fatigue, load, and inter-student heterogeneity.
