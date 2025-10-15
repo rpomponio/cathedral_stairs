@@ -1,8 +1,6 @@
 ---
-title: "From the ECP Mountaineering School Archives"
-subtitle: "Analyzing stair-climbing workouts in new mountain athletes"
+title: "ECP Mountaineering School Archives"
 author: "Ray Pomponio"
-date: today
 format:
   html:
     theme: journal
@@ -12,18 +10,46 @@ format:
 execute:
   echo: false
   warning: false
-abstract: "Abstract text goes here."
-abstract-title: "Overview"
 ---
 
 ```{r}
 library(data.table)
 reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
 ```
-Convert rep times to pace in meters per hour:
+
+Convert rep times to vertical pace in meters per hour (MPH):
 
 ```{r}
 reps[, PaceMPH:=60 * 132 / TimeMins]
-hist(reps[, PaceMPH], xlab="Meters per hour", main="Histogram")
+reps[, LogPace:=log(PaceMPH)]
+hist(reps$PaceMPH)
 ```
-Next steps: describe variability in pace due to influence of fatigue, load, and inter-student heterogeneity.
+
+Examine distribution of (log) climbing pace over seasons:
+
+```{r}
+boxplot(LogPace ~ EntryYear, data=reps)
+```
+
+Examine distribution of pack weights over seasons:
+
+```{r}
+boxplot(Weight ~ EntryYear, data=reps)
+```
+
+Relationship between pace, weight, week of season, and rep number:
+
+```{r}
+pairs(reps[, .(LogPace, Weight, Week, RepNum)], pch=16, cex=0.75)
+```
+
+Weight-adjusted pace, by season:
+
+```{r}
+fit.pace <- lm(LogPace ~ Weight, data=reps)
+reps[, PredLogPace1:=as.numeric(predict(fit.pace, newdata=reps))]
+reps[, DiffLogPace1:=LogPace - PredLogPace1]
+boxplot(DiffLogPace1 ~ EntryYear, data=reps)
+```
+
+**Adjusting for pack weight, students in the 2023-24 cohort were the slowest of any season over the past 10 years**
