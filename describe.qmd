@@ -52,4 +52,44 @@ reps[, DiffLogPace1:=LogPace - PredLogPace1]
 boxplot(DiffLogPace1 ~ EntryYear, data=reps)
 ```
 
-**Adjusting for pack weight, students in the 2023-24 cohort were the slowest of any season over the past 10 years**
+Adjusting for pack weight, fit curves to describe student-specific responses to rep number:
+
+```{r}
+students <- reps[, .(EntryYear=first(EntryYear), Reps=.N), by=StudentID]
+for (sid in students$StudentID){
+  fit.sid <- lm(DiffLogPace1 ~ RepNum + I(RepNum^2), data=reps[StudentID==sid])
+  students[StudentID==sid, alpha:=coef(fit.sid)[1]]
+  students[StudentID==sid, beta1:=coef(fit.sid)[2]]
+  students[StudentID==sid, beta2:=coef(fit.sid)[3]]
+}
+```
+
+Randomly select 10 students and plot curves:
+
+```{r}
+sample.sid <- sample(students$StudentID, size=10)
+get_curve <- function(x, alpha, beta1, beta2) alpha + beta1 * x + beta2 * x^2
+plot(
+  1:10,
+  get_curve(
+    1:10,
+    students[StudentID==sample.sid[1], alpha],
+    students[StudentID==sample.sid[1], beta1],
+    students[StudentID==sample.sid[1], beta2]),
+  ylim=c(-1, 1), type="b", pch=1, cex=0.5,
+  ylab="Predicted Pace", main="Student response curves")
+for (sid in sample.sid[2:10]){
+  lines(
+    1:10,
+    get_curve(1:10, students[StudentID==sid, alpha],
+              students[StudentID==sid, beta1], students[StudentID==sid, beta2]))
+}
+```
+
+Distribution of quadratic terms among students:
+
+```{r}
+hist(students$beta2)
+```
+
+Next: build hierarchical model of student response curves.
