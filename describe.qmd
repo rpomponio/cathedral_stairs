@@ -15,6 +15,7 @@ execute:
 ```{r}
 library(data.table)
 reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
+library(lme4)
 ```
 
 Convert rep times to vertical pace in meters per hour (MPH):
@@ -92,4 +93,40 @@ Distribution of quadratic terms among students:
 hist(students$beta2)
 ```
 
-Next: build hierarchical model of student response curves.
+# hierarchical models of student response curves
+
+```{r}
+fit.rdm.int <- lmer(
+  LogPace ~ Weight + EntryYear + RepNum + I(RepNum^2) + (1|StudentID),
+  data=reps,
+  REML=FALSE)
+summary(fit.rdm.int)
+```
+
+```{r}
+plot(
+  1:10,
+  get_curve(
+    1:10,
+    coef(fit.rdm.int)$StudentID[1, 1],
+    coef(fit.rdm.int)$StudentID[1, "RepNum"],
+    coef(fit.rdm.int)$StudentID[1, "I(RepNum^2)"]),
+  ylim=c(5.5, 7.5), type="b", pch=1, cex=0.5,
+  ylab="Predicted Pace", main="Student response curves")
+for (i in 2:10){
+  lines(
+    1:10,
+    get_curve(1:10, coef(fit.rdm.int)$StudentID[i, 1],
+              coef(fit.rdm.int)$StudentID[i, "RepNum"],
+              coef(fit.rdm.int)$StudentID[i, "I(RepNum^2)"]))
+}
+```
+
+```{r}
+fit.rdm.slp2 <- lmer(
+  LogPace ~ Weight + RepNum + I(RepNum^2) + (1|StudentID) + (1|EntryYear),
+  data=reps,
+  REML=FALSE)
+summary(fit.rdm.slp2)
+```
+
