@@ -1,5 +1,6 @@
 ---
-title: "ECP Mountaineering School Archives"
+title: "Describing Heterogeneity in Student Response to Training"
+subtitle: "From the ECP Mountaineering School Archives"
 author: "Ray Pomponio"
 format:
   html:
@@ -10,123 +11,148 @@ format:
 execute:
   echo: false
   warning: false
+fig-cap-location: top
 ---
 
 ```{r}
+# load packages for analysis
 library(data.table)
-reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
 library(lme4)
+library(ggplot2)
+theme_set(theme_linedraw(base_size=12))
 ```
 
-Convert rep times to vertical pace in meters per hour (MPH):
-
 ```{r}
-reps[, PaceMPH:=60 * 132 / TimeMins]
-reps[, LogPace:=log(PaceMPH)]
-hist(reps$PaceMPH)
+# load dataset in "long" format
+reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
 ```
 
-Examine distribution of (log) climbing pace over seasons:
+## Introduction
+
+Begin by deriving an outcome for each repetition of the stairs - I convert rep times to vertical climbing pace in meters per hour:
 
 ```{r}
-boxplot(LogPace ~ EntryYear, data=reps)
+#| echo: true
+reps[, MetersPerHour:=60 * 132 / TimeMins]
 ```
 
-Examine distribution of pack weights over seasons:
+Below is the empirical distribution of the outcome (climbing pace):
 
 ```{r}
-boxplot(Weight ~ EntryYear, data=reps)
+#| label: fig-hist-outcome
+#| fig-cap: "Distribution of climbing pace over all reps (10 seasons)"
+ggplot(reps, aes(x=MetersPerHour)) +
+  geom_histogram(binwidth=10) +
+  ylab("Frequency")
 ```
 
-Relationship between pace, weight, week of season, and rep number:
+The distribution in @fig-hist-outcome shows a central tendency near 500 meters per hour, but with substantial variability across reps. Note, a 2004 study of Alpine hikers found the typical climbing pace varied between 180 and 480 meters per hour. The typical pace of climbing in the stairs is likely greater for several reasons, including the controlled training environment and the lack of breaks (students did not record the amount of time they rested between reps).
+
+The goal of this analysis is to describe sources of variability in climbing pace using the training logs from 10 years of the ECP mountaineering school. Many potential sources of variability exist, some of which were measured in this dataset:
+
+* Student-level heterogeneity
+* Pack weight
+* Day of the week
+* Week of the season
+* Footwear (running shoes, hiking boots, or mountianeering boots)
+
+Of these measures, I'm most interested in describing student-level heterogeneity; this is the variability due to differences between students, all else being equal. To achieve this, I will rely on statistical modeling methods.
+
+## Visualization
+
+To illustrated student-level heterogeneity, I begin by selecting ten random workouts; two workouts are selected from each of five students' training logs.
 
 ```{r}
-pairs(reps[, .(LogPace, Weight, Week, RepNum)], pch=16, cex=0.75)
-```
-
-Weight-adjusted pace, by season:
-
-```{r}
-fit.pace <- lm(LogPace ~ Weight, data=reps)
-reps[, PredLogPace1:=as.numeric(predict(fit.pace, newdata=reps))]
-reps[, DiffLogPace1:=LogPace - PredLogPace1]
-boxplot(DiffLogPace1 ~ EntryYear, data=reps)
-```
-
-Adjusting for pack weight, fit curves to describe student-specific responses to rep number:
-
-```{r}
-students <- reps[, .(EntryYear=first(EntryYear), Reps=.N), by=StudentID]
-for (sid in students$StudentID){
-  fit.sid <- lm(DiffLogPace1 ~ RepNum + I(RepNum^2), data=reps[StudentID==sid])
-  students[StudentID==sid, alpha:=coef(fit.sid)[1]]
-  students[StudentID==sid, beta1:=coef(fit.sid)[2]]
-  students[StudentID==sid, beta2:=coef(fit.sid)[3]]
+set.seed(1818)
+rand.stud.idxs <- sample(unique(reps$StudentID), size=5, replace=F)
+rand.workouts <- data.table()
+for (stud.idx in rand.stud.idxs){
+  tmp <- reps[StudentID==stud.idx, .N, by=.(StudentID, Date, Week)]
+  rand.workout.idxs <- sample(1:nrow(tmp), size=2, replace=F)
+  rand.workouts <- rbindlist(
+    list(rand.workouts, tmp[rand.workout.idxs, ]))
 }
+rand.reps <- merge(rand.workouts, reps, by=c("StudentID", "Date", "Week"))
+rand.reps[, WorkoutID:=paste0(StudentID, " (Wk ", Week, ")")]
 ```
 
-Randomly select 10 students and plot curves:
+```{r}
+#| label: fig-scatter-select
+#| fig-cap: "Climbing pace trends in ten randomly-selected workouts (5 students)"
+ggplot(rand.reps, aes(x=RepNum, y=MetersPerHour)) +
+  facet_wrap(~WorkoutID, nrow=2, ncol=5, dir="v") +
+  geom_point(shape=1) +
+  geom_smooth(aes(col=StudentID), method="lm", se=F, linewidth=0.5) +
+  scale_x_continuous(breaks=c(1, 4, 7, 10), minor_breaks=1:12) +
+  theme(panel.spacing=unit(0, "lines"), legend.position="none")
+```
+
+The plots in @fig-scatter-select illustrate several interesting characteristics. Across students, climbing pace tended to slow down throughout a workout, though this was not universal. Across workouts, the same student (within a vertical panel of the plots) tended to exhibit a similar response to training. That is, students who tended to slow down in the first workout also slowed down in the second workout. Two students appeared to maintain a relatively constant pace throughout both workouts.
+
+These characteristics are noteworthy because they can be leveraged when building a statistical model to quantify the variability in climbing pace. For example, the fact that students may exhibit a habit of response over multiple workouts mean that it is appropriate to pool information across workouts to learn about student-level heterogeneity, which is the goal of this work.
+
+## Model Building
+
+I begin with a relatively simple model of climbing pace that attributes all of the variability to student-level heterogeneity. There are two sources of variability in this model that describe heterogeneity:
+
+1. Students' "baseline" climbing pace
+2. Students' response to training reps
+
+I leave out the technical details of the model specification for simplicity but the software can be found with extensive documentation online.[^1]
+
+[^1]: Fitting Linear Mixed-Effects Models using lme4. <https://cran.r-project.org/web/packages/lme4/vignettes/lmer.pdf>
 
 ```{r}
-sample.sid <- sample(students$StudentID, size=10)
-get_curve <- function(x, alpha, beta1, beta2) alpha + beta1 * x + beta2 * x^2
-plot(
-  1:10,
-  get_curve(
-    1:10,
-    students[StudentID==sample.sid[1], alpha],
-    students[StudentID==sample.sid[1], beta1],
-    students[StudentID==sample.sid[1], beta2]),
-  ylim=c(-1, 1), type="b", pch=1, cex=0.5,
-  ylab="Predicted Pace", main="Student response curves")
-for (sid in sample.sid[2:10]){
-  lines(
-    1:10,
-    get_curve(1:10, students[StudentID==sid, alpha],
-              students[StudentID==sid, beta1], students[StudentID==sid, beta2]))
+#| echo: true
+#| output: false
+# fit model of only student-level heterogeneity
+fit.slh <- lmer(MetersPerHour ~ RepNum + (RepNum | StudentID), reps)
+fit.slh
+```
+
+The interpretation of this model's first source of variability is that across all students, the average baseline pace is `r format(unname(fixef(fit.slh)[1]), digits=3)` meters per hour; that's the pace at which the "typical" student would begin climbing. However, students vary substantially in this characteristic, with a standard deviation of about `r format(sd(ranef(fit.slh)$StudentID[, 1]), digits=3)` meters per hour. In other words, we can expect about half of all students to have a baseline climbing pace between `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.25)), digits=3)` and `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.75)), digits=3)` meters per hour. It is important to note that this model did not account for pack weight or other strong sources of variability.
+
+The interpretation of this model's second source of variability is that across all students, the average response to training reps is a decline of `r format(abs(unname(fixef(fit.slh)[2])), digits=3)` meters per hour (per rep). In rough terms that is about 1% of the average baseline pace; we can equivalently say that students slow down by about 1% of their original pace per rep, at a fixed rate. But of course students vary in this characteristics, too. We can expect about half of all students to exhibit a slow down between `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.75))), digits=3)` and `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.25))), digits=3)` meters per hour (per rep).
+
+There is an additional source of variability here, which is inherent to the model specification. Students with *faster* baseline climbing paces tended to exhibit better responses to training reps, in the form of more-consistent climbing pace (or in extreme cases, some students increased their pace during workouts).
+
+Below I attempt to illustrate this latent relationship, with each dot representing a student:
+
+```{r}
+#| label: fig-scatter-ranef
+#| fig-cap: "Relationship between student pace (baseline) and response to reps"
+dt.slh <- data.table(ranef(fit.slh)$StudentID, keep.rownames=TRUE)
+ggplot(dt.slh, aes(x=RepNum, y=`(Intercept)`)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  labs(x="Response to training (per rep)", y="Baseline pace")
+```
+
+```{r}
+outl.stud.idxs <- dt.slh[RepNum > 30, rn]
+outl.workouts <- data.table()
+for (stud.idx in outl.stud.idxs){
+  tmp <- reps[StudentID==stud.idx, .N, by=.(StudentID, Date, Week)]
+  outl.workout.idxs <- sample(1:nrow(tmp), size=5, replace=F)
+  outl.workouts <- rbindlist(
+    list(outl.workouts, tmp[outl.workout.idxs, ]))
 }
+outl.reps <- merge(outl.workouts, reps, by=c("StudentID", "Date", "Week"))
+outl.reps[, WorkoutID:=paste0(StudentID, " (Wk ", Week, ")")]
 ```
 
-Distribution of quadratic terms among students:
+Looking at @fig-scatter-ranef makes it clear that two students are extreme outliers. I was curious what their workouts looked like, so I plotted a sample of them below:
 
 ```{r}
-hist(students$beta2)
+#| label: fig-scatter-outliers
+#| fig-cap: "Climbing pace trends in two outlier students"
+ggplot(outl.reps, aes(x=RepNum, y=MetersPerHour)) +
+  facet_wrap(~WorkoutID, nrow=2, ncol=5, dir="h") +
+  geom_point(shape=1) +
+  geom_smooth(aes(col=StudentID), method="lm", se=F, linewidth=0.5) +
+  scale_x_continuous(breaks=c(1, 4, 7, 10), minor_breaks=1:12) +
+  theme(panel.spacing=unit(0, "lines"), legend.position="none")
 ```
 
-# hierarchical models of student response curves
-
-```{r}
-fit.rdm.int <- lmer(
-  LogPace ~ Weight + EntryYear + RepNum + I(RepNum^2) + (1|StudentID),
-  data=reps,
-  REML=FALSE)
-summary(fit.rdm.int)
-```
-
-```{r}
-plot(
-  1:10,
-  get_curve(
-    1:10,
-    coef(fit.rdm.int)$StudentID[1, 1],
-    coef(fit.rdm.int)$StudentID[1, "RepNum"],
-    coef(fit.rdm.int)$StudentID[1, "I(RepNum^2)"]),
-  ylim=c(5.5, 7.5), type="b", pch=1, cex=0.5,
-  ylab="Predicted Pace", main="Student response curves")
-for (i in 2:10){
-  lines(
-    1:10,
-    get_curve(1:10, coef(fit.rdm.int)$StudentID[i, 1],
-              coef(fit.rdm.int)$StudentID[i, "RepNum"],
-              coef(fit.rdm.int)$StudentID[i, "I(RepNum^2)"]))
-}
-```
-
-```{r}
-fit.rdm.slp2 <- lmer(
-  LogPace ~ Weight + RepNum + I(RepNum^2) + (1|StudentID) + (1|EntryYear),
-  data=reps,
-  REML=FALSE)
-summary(fit.rdm.slp2)
-```
+The plots in @fig-scatter-outliers confirm that the two students in question are indeed outliers; they both exhibit a tendency to accelerate in their climbing pace during a workout. This is in stark contrast to the general tendency to slow down in pace, or at lease maintain it during a workout, illustrated in @fig-scatter-ranef.
 
