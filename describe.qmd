@@ -1,5 +1,5 @@
 ---
-title: "Describing Heterogeneity in Student Response to Training"
+title: "Describing Heterogeneity in Students' Response to Training"
 subtitle: "From the ECP Mountaineering School Archives"
 author: "Ray Pomponio"
 format:
@@ -29,7 +29,7 @@ reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
 
 ## Introduction
 
-Begin by deriving an outcome for each repetition of the stairs - I convert rep times to vertical climbing pace in meters per hour:
+I begin by deriving an outcome for each repetition of the stairs -- instead of rep times, which are unique to this training protocol, I derive the climbing pace in vertical meters per hour:
 
 ```{r}
 #| echo: true
@@ -46,7 +46,9 @@ ggplot(reps, aes(x=MetersPerHour)) +
   ylab("Frequency")
 ```
 
-The distribution in @fig-hist-outcome shows a central tendency near 500 meters per hour, but with substantial variability across reps. Note, a 2004 study of Alpine hikers found the typical climbing pace varied between 180 and 480 meters per hour. The typical pace of climbing in the stairs is likely greater for several reasons, including the controlled training environment and the lack of breaks (students did not record the amount of time they rested between reps).
+The distribution in @fig-hist-outcome shows a central tendency near 500 meters per hour, but with substantial variability across reps. For context, a [2004 study](https://www.tandfonline.com/doi/full/10.1080/15438620490497332) of Austrian hikers found their typical climbing pace varied between 180 and 480 meters per hour.[^1] Compared to outdoor conditions, the typical climbing pace in this exercise is likely greater due to the controlled environment and the lack of breaks (students do not record the amount of time they rested between reps).
+
+[^1]: The study mentioned was published in the journal of **Research in Sports Medicine** and is titled, *Exercise Capacity for Mountaineering: How Much Is Necessary?*
 
 The goal of this analysis is to describe sources of variability in climbing pace using the training logs from 10 years of the ECP mountaineering school. Many potential sources of variability exist, some of which were measured in this dataset:
 
@@ -60,7 +62,7 @@ Of these measures, I'm most interested in describing student-level heterogeneity
 
 ## Visualization
 
-To illustrated student-level heterogeneity, I begin by selecting ten random workouts; two workouts are selected from each of five students' training logs.
+To begin illustrating student-level heterogeneity, I select five random students and two random workouts from each of their training logs.
 
 ```{r}
 set.seed(1818)
@@ -76,6 +78,8 @@ rand.reps <- merge(rand.workouts, reps, by=c("StudentID", "Date", "Week"))
 rand.reps[, WorkoutID:=paste0(StudentID, " (Wk ", Week, ")")]
 ```
 
+Each vertical column of the plot below corresponds to a student, and each panel corresponds to a single workout:
+
 ```{r}
 #| label: fig-scatter-select
 #| fig-cap: "Climbing pace trends in ten randomly-selected workouts (5 students)"
@@ -87,20 +91,20 @@ ggplot(rand.reps, aes(x=RepNum, y=MetersPerHour)) +
   theme(panel.spacing=unit(0, "lines"), legend.position="none")
 ```
 
-The plots in @fig-scatter-select illustrate several interesting characteristics. Across students, climbing pace tended to slow down throughout a workout, though this was not universal. Across workouts, the same student (within a vertical panel of the plots) tended to exhibit a similar response to training. That is, students who tended to slow down in the first workout also slowed down in the second workout. Two students appeared to maintain a relatively constant pace throughout both workouts.
+The plots in @fig-scatter-select illustrate several interesting characteristics. Across students, climbing paces tended to slow down throughout each workout, with some exceptions. Across mutliple workouts, an individual student tended to exhibit a similar response to training. That is, students who tended to slow down in the first workout also slowed down in the second workout. Two students (the rightmost in the figure) appeared to maintain a relatively constant climbing pace throughout their workouts.
 
 These characteristics are noteworthy because they can be leveraged when building a statistical model to quantify the variability in climbing pace. For example, the fact that students may exhibit a habit of response over multiple workouts mean that it is appropriate to pool information across workouts to learn about student-level heterogeneity, which is the goal of this work.
 
 ## Model Building
 
-I begin with a relatively simple model of climbing pace that attributes all of the variability to student-level heterogeneity. There are two sources of variability in this model that describe heterogeneity:
+I begin with a relatively simple model of climbing pace that attributes all of the variability to student-level heterogeneity. There are two sources of heterogeneity within this simple model:
 
-1. Students' "baseline" climbing pace
-2. Students' response to training reps
+1. Students' baseline climbing pace
+2. Students' response to additional reps
 
-I leave out the technical details of the model specification for simplicity but the software can be found with extensive documentation online.[^1]
+I leave out the technical details of the model specification for simplicity but you can think of these two effects as the "intercept" and "slope" for each student; the software I use for modeling includes extensive documentation online.[^2]
 
-[^1]: Fitting Linear Mixed-Effects Models using lme4. <https://cran.r-project.org/web/packages/lme4/vignettes/lmer.pdf>
+[^2]: Fitting Linear Mixed-Effects Models using lme4. <https://cran.r-project.org/web/packages/lme4/vignettes/lmer.pdf>
 
 ```{r}
 #| echo: true
@@ -110,17 +114,17 @@ fit.slh <- lmer(MetersPerHour ~ RepNum + (RepNum | StudentID), reps)
 fit.slh
 ```
 
-The interpretation of this model's first source of variability is that across all students, the average baseline pace is `r format(unname(fixef(fit.slh)[1]), digits=3)` meters per hour; that's the pace at which the "typical" student would begin climbing. However, students vary substantially in this characteristic, with a standard deviation of about `r format(sd(ranef(fit.slh)$StudentID[, 1]), digits=3)` meters per hour. In other words, we can expect about half of all students to have a baseline climbing pace between `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.25)), digits=3)` and `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.75)), digits=3)` meters per hour. It is important to note that this model did not account for pack weight or other strong sources of variability.
+The interpretation of this model's first effect is that across all students, the average baseline pace is `r format(unname(fixef(fit.slh)[1]), digits=3)` meters per hour; that's the pace at which the "typical" student would begin climbing. However, students vary substantially in this characteristic, with a standard deviation of about `r format(sd(ranef(fit.slh)$StudentID[, 1]), digits=3)` meters per hour. In other words, we can expect about half of all students to have a baseline climbing pace between `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.25)), digits=3)` and `r format(unname(quantile(fixef(fit.slh)[1] + ranef(fit.slh)$StudentID[, 1], 0.75)), digits=3)` meters per hour. It is important to note that this model did not account for pack weight or other possible sources of variability.
 
-The interpretation of this model's second source of variability is that across all students, the average response to training reps is a decline of `r format(abs(unname(fixef(fit.slh)[2])), digits=3)` meters per hour (per rep). In rough terms that is about 1% of the average baseline pace; we can equivalently say that students slow down by about 1% of their original pace per rep, at a fixed rate. But of course students vary in this characteristics, too. We can expect about half of all students to exhibit a slow down between `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.75))), digits=3)` and `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.25))), digits=3)` meters per hour (per rep).
+The interpretation of this model's second effect is that across all students, the average response to training reps is a decline of `r format(abs(unname(fixef(fit.slh)[2])), digits=3)` meters per hour (per rep). In rough terms that is about 1% of the average baseline pace; we can equivalently say that students slow down by about 1% of their original pace per rep, at a fixed rate. But of course students vary in this characteristics, too. We can expect about half of all students to exhibit a slow down between `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.75))), digits=3)` and `r format(unname(abs(quantile(fixef(fit.slh)[2] + ranef(fit.slh)$StudentID[, 2], 0.25))), digits=3)` meters per hour (per rep).
 
-There is an additional source of variability here, which is inherent to the model specification. Students with *faster* baseline climbing paces tended to exhibit better responses to training reps, in the form of more-consistent climbing pace (or in extreme cases, some students increased their pace during workouts).
+There is an additional source of variability here, which is embedded in the model specification. That is, the correlation between the two effects across students is positive. This means a student with a faster baseline pace is less-likely to slow down during their workout; the converse is true of students with slower baseline climbing paces.
 
 Below I attempt to illustrate this latent relationship, with each dot representing a student:
 
 ```{r}
 #| label: fig-scatter-ranef
-#| fig-cap: "Relationship between student pace (baseline) and response to reps"
+#| fig-cap: "Relationship between student pace (baseline) and response to reps (change in pace per rep)"
 dt.slh <- data.table(ranef(fit.slh)$StudentID, keep.rownames=TRUE)
 ggplot(dt.slh, aes(x=RepNum, y=`(Intercept)`)) +
   geom_point() +
