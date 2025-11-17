@@ -1,5 +1,5 @@
 ---
-title: "Describing Heterogeneity in Students' Response to Training"
+title: "Heterogeneity in Students' Response to Alpine Training"
 subtitle: "From the ECP Mountaineering School Archives"
 author: "Ray Pomponio"
 format:
@@ -29,28 +29,28 @@ reps <- fread(file.path("Data/MtnSchoolStairReps.csv"))
 
 ## Introduction
 
-I begin by deriving an outcome for each repetition of the stairs -- instead of rep times, which are unique to this training protocol, I derive the climbing pace in vertical meters per hour:
+I begin this inquiry by deriving an outcome for each repetition of the stairs -- instead of rep times, which are somewhat arbitrary given the size of the Cathedral of Learning, I derive a measure of climbing pace in vertical meters per hour:
 
 ```{r}
 #| echo: true
-reps[, MetersPerHour:=60 * 132 / TimeMins]
+reps[, MetersPerHour:=60 * 132 / TimeMins] ##assumes Cathy is 132m tall
 ```
 
 Below is the empirical distribution of the outcome (climbing pace):
 
 ```{r}
 #| label: fig-hist-outcome
-#| fig-cap: "Distribution of climbing pace over all reps (10 seasons)"
+#| fig-cap: "Distribution of climbing pace over all reps in 10 seasons"
 ggplot(reps, aes(x=MetersPerHour)) +
   geom_histogram(binwidth=10) +
   ylab("Frequency")
 ```
 
-The distribution in @fig-hist-outcome shows a central tendency near 500 meters per hour, but with substantial variability across reps. For context, a [2004 study](https://www.tandfonline.com/doi/full/10.1080/15438620490497332) of Austrian hikers found their typical climbing pace varied between 180 and 480 meters per hour.[^1] Compared to outdoor conditions, the typical climbing pace in this exercise is likely greater due to the controlled environment and the lack of breaks (students do not record the amount of time they rested between reps).
+The distribution in @fig-hist-outcome shows a central tendency near 500 meters per hour, but with substantial variability. For external context, a [2004 study](https://www.tandfonline.com/doi/full/10.1080/15438620490497332) of Austrian hikers found their typical climbing pace fell between 180 and 480 meters per hour.[^1] Compared to indoor conditions, which are highly controlled, the typical climbing pace in the mountains would be slower than the pace reflected in these training logs. Consider too that students do not record the amount of time they rested between repetitions on the stairs.
 
-[^1]: The study mentioned was published in the journal of **Research in Sports Medicine** and is titled, *Exercise Capacity for Mountaineering: How Much Is Necessary?*
+[^1]: The study mentioned was published in the Journal of Research in Sports Medicine and is titled, *Exercise Capacity for Mountaineering: How Much Is Necessary?*
 
-The goal of this analysis is to describe sources of variability in climbing pace using the training logs from 10 years of the ECP mountaineering school. Many potential sources of variability exist, some of which were measured in this dataset:
+The goal here is to describe sources of variability in climbing pace due to some of the measured variables in this dataset:
 
 * Student-level heterogeneity
 * Pack weight
@@ -58,11 +58,11 @@ The goal of this analysis is to describe sources of variability in climbing pace
 * Week of the season
 * Footwear (running shoes, hiking boots, or mountianeering boots)
 
-Of these measures, I'm most interested in describing student-level heterogeneity; this is the variability due to differences between students, all else being equal. To achieve this, I will rely on statistical modeling methods.
+Of these variables, I'm most interested in describing student-level heterogeneity; this is the variability due to differences between students. It could be due to innate ability, body composition, or other unknown factors. To elucidate as much as we can, I will use data from 10 years of training logs, relying on statistical modeling to inform my understanding.
 
 ## Visualization
 
-To begin illustrating student-level heterogeneity, I select five random students and two random workouts from each of their training logs.
+To begin illustrating student-level heterogeneity, I select five random students and two random workouts from each students' training logs.
 
 ```{r}
 set.seed(1818)
@@ -78,7 +78,7 @@ rand.reps <- merge(rand.workouts, reps, by=c("StudentID", "Date", "Week"))
 rand.reps[, WorkoutID:=paste0(StudentID, " (Wk ", Week, ")")]
 ```
 
-Each vertical column of the plot below corresponds to a student, and each panel corresponds to a single workout:
+Each vertical column of the figure below corresponds to a student, and each panel corresponds to a single workout:
 
 ```{r}
 #| label: fig-scatter-select
@@ -91,16 +91,16 @@ ggplot(rand.reps, aes(x=RepNum, y=MetersPerHour)) +
   theme(panel.spacing=unit(0, "lines"), legend.position="none")
 ```
 
-The plots in @fig-scatter-select illustrate several interesting characteristics. Across students, climbing paces tended to slow down throughout each workout, with some exceptions. Across mutliple workouts, an individual student tended to exhibit a similar response to training. That is, students who tended to slow down in the first workout also slowed down in the second workout. Two students (the rightmost in the figure) appeared to maintain a relatively constant climbing pace throughout their workouts.
+The plots in @fig-scatter-select illustrate several interesting characteristics. Across students, climbing paces tend to slow down during a workout, with some exceptions. Across workouts, an individual student tends to exhibit a similar response to training. That is, if she/he tends to slow down during the first workout, she/he also tends to slow down during the second workout. Two students (the rightmost in the figure) appeared to maintain a relatively constant climbing pace throughout their workouts.
 
-These characteristics are noteworthy because they can be leveraged when building a statistical model to quantify the variability in climbing pace. For example, the fact that students may exhibit a habit of response over multiple workouts mean that it is appropriate to pool information across workouts to learn about student-level heterogeneity, which is the goal of this work.
+These characteristics are noteworthy because they can be exploited when building a statistical model to evaluate the variability in climbing pace. For example, the fact that students may exhibit a pattern of response over multiple workouts means that it is appropriate to pool information at the student level to learn about inter-student heterogeneity, which is the goal of this work.
 
 ## Model Building
 
-I begin with a relatively simple model of climbing pace that attributes all of the variability to student-level heterogeneity. There are two sources of heterogeneity within this simple model:
+I begin with a relatively simple model of climbing pace that attributes *all* of the variability to student-level heterogeneity. There are two sources of heterogeneity within this model:
 
 1. Students' baseline climbing pace
-2. Students' response to additional reps
+2. Students' adaptation during the workout
 
 I leave out the technical details of the model specification for simplicity but you can think of these two effects as the "intercept" and "slope" for each student; the software I use for modeling includes extensive documentation online.[^2]
 
@@ -126,14 +126,15 @@ Below I attempt to illustrate this latent relationship, with each dot representi
 #| label: fig-scatter-ranef
 #| fig-cap: "Relationship between student pace (baseline) and response to reps (change in pace per rep)"
 dt.slh <- data.table(ranef(fit.slh)$StudentID, keep.rownames=TRUE)
+dt.slh[, RepNum:=RepNum + fixef(fit.slh)[2]]
 ggplot(dt.slh, aes(x=RepNum, y=`(Intercept)`)) +
   geom_point() +
   geom_smooth(method="lm") +
-  labs(x="Response to training (per rep)", y="Baseline pace")
+  labs(x="Adaptation to training (mid-workout)", y="Baseline pace")
 ```
 
 ```{r}
-outl.stud.idxs <- dt.slh[RepNum > 30, rn]
+outl.stud.idxs <- dt.slh[RepNum > 20, rn]
 outl.workouts <- data.table()
 for (stud.idx in outl.stud.idxs){
   tmp <- reps[StudentID==stud.idx, .N, by=.(StudentID, Date, Week)]
@@ -160,3 +161,8 @@ ggplot(outl.reps, aes(x=RepNum, y=MetersPerHour)) +
 
 The plots in @fig-scatter-outliers confirm that the two students in question are indeed outliers; they both exhibit a tendency to accelerate in their climbing pace during a workout. This is in stark contrast to the general tendency to slow down in pace, or at lease maintain it during a workout, illustrated in @fig-scatter-ranef.
 
+## Model Refinement
+
+* [ ] Include additional "fixed" effects
+* [ ] Consider robust estimation (due to outliers)
+* [ ] Analyze student-level effects grouping by season (are there differences?)
